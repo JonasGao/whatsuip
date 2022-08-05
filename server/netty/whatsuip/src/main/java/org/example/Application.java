@@ -1,32 +1,22 @@
 package org.example;
 
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.ReferenceCountUtil;
 
-public class Application extends ChannelInboundHandlerAdapter {
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+
+public class Application {
 
     private final int port;
 
     public Application(int port) {
         this.port = port;
-    }
-
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        try {
-            System.out.println(msg);
-        } finally {
-            ReferenceCountUtil.release(msg);
-        }
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        cause.printStackTrace();
     }
 
     public static void main(String[] args) {
@@ -43,8 +33,8 @@ public class Application extends ChannelInboundHandlerAdapter {
     }
 
     private void run() throws InterruptedException {
-        EventLoopGroup bossGroup = new NioEventLoopGroup();
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        EventLoopGroup workerGroup = new NioEventLoopGroup(2);
         try {
             ServerBootstrap b = new ServerBootstrap();
             b.group(bossGroup, workerGroup)
@@ -52,7 +42,7 @@ public class Application extends ChannelInboundHandlerAdapter {
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel socketChannel) throws Exception {
-                            socketChannel.pipeline().addLast(new Application(port));
+                            socketChannel.pipeline().addLast(new Handler());
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)
@@ -63,5 +53,25 @@ public class Application extends ChannelInboundHandlerAdapter {
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
         }
+    }
+}
+
+class Handler extends ChannelInboundHandlerAdapter {
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        SocketAddress socketAddress = ctx.channel().remoteAddress();
+        if (socketAddress instanceof InetSocketAddress inet) {
+            System.out.printf("%s\t%s\t%s\t%s%n", inet.getHostString(), inet.getHostName(), inet.getAddress(), inet.getPort());
+        } else {
+            System.out.printf("Not support: \"%s\", \"%s\"%n", socketAddress.getClass(), socketAddress);
+        }
+        ctx.close();
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        cause.printStackTrace();
+        ctx.close();
     }
 }
